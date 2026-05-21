@@ -23,10 +23,14 @@ def get_models() -> list[dict]:
             "litellm_params": {
                 "model":   "gpt-4o-mini",
                 "api_key": settings.openai_api_key,
+                "tpm":     200000,
+                "rpm":     500,
             },
             "model_info": {
                 "input_cost_per_token":  0.00000015,
                 "output_cost_per_token": 0.00000060,
+                "mode":   "chat",
+                "weight": 3,
             },
         },
         # "smart" second entry = fallback replica
@@ -35,10 +39,14 @@ def get_models() -> list[dict]:
             "litellm_params": {
                 "model":   "gpt-4o",
                 "api_key": settings.openai_api_key,
+                "tpm":     30000,
+                "rpm":     500,
             },
             "model_info": {
                 "input_cost_per_token":  0.000005,
                 "output_cost_per_token": 0.000015,
+                "mode":   "chat",
+                "weight": 1,
             },
         },
     ]

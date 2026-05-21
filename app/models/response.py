@@ -24,6 +24,7 @@ class QueryResponse(BaseModel):
     fallback_used:  bool          # ← NEW: was a fallback triggered?
     fallback_model: str | None    # ← NEW: which model was used if fallback
     cached:         bool
+    routing_strategy:  str 
     usage: dict
     elapsed_s: float
 

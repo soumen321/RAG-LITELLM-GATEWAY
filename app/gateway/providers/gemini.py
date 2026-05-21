@@ -23,10 +23,14 @@ def get_models() -> list[dict]:
             "litellm_params": {
                 "model":   "gemini/gemini-2.0-flash",
                 "api_key": settings.gemini_api_key,
+                "tpm":     1000000,  # 1M tokens/day ÷ 1440 min ≈ 694/min
+                "rpm":     15,       # free tier hard limit
             },
             "model_info": {
                 "input_cost_per_token":  0.0,   # free tier
                 "output_cost_per_token": 0.0,
+                "mode":   "chat",
+                "weight": 2,
             },
         },
         # "balanced" second entry — newer model as replica
@@ -35,10 +39,14 @@ def get_models() -> list[dict]:
             "litellm_params": {
                 "model":   "gemini/gemini-2.0-flash",
                 "api_key": settings.gemini_api_key,
+                "tpm":     1000000,
+                "rpm":     15,
             },
             "model_info": {
                 "input_cost_per_token":  0.0,
                 "output_cost_per_token": 0.0,
+                "mode":   "chat",
+                "weight": 1,
             },
         },
     ]

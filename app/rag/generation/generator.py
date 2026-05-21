@@ -151,6 +151,7 @@ def generate_answer(
         "fallback_model": model_used if fallback_used else None,
         "cost_usd":       cost_record.cost_usd,     # ← NEW Phase 4
         "cached":         was_cached,           # ← NEW Phase 5: indicates if response was from cache
+        "routing_strategy": settings.routing_strategy,
         "usage": {
             "prompt_tokens":     cost_record.prompt_tokens,
             "completion_tokens": cost_record.completion_tokens,

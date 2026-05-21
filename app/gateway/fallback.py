@@ -39,6 +39,7 @@ from app.gateway.budget_manager import check_budget_before_call
 from app.gateway.health import record_failure, record_success, is_healthy
 from app.gateway.cost_tracker import extract_cost_from_response
 from app.gateway.router import get_router
+from app.gateway.load_balancer import get_lb_metrics
 
 logger   = get_logger(__name__)
 settings = get_settings()
@@ -56,9 +57,8 @@ FALLBACK_CHAINS: dict[str, list[str]] = {
     "fast": [
         # Primary handled by router.
         # These are the fallbacks if Groq fails:
-        "gemini/gemini-1.5-flash",     # free
-        "gemini/gemini-2.0-flash-exp", # free (experimental)
-        "gpt-4o-mini",                 # paid (last resort)
+        "gemini/gemini-2.0-flash",    # free
+        "gpt-4o-mini",                # paid (last resort)
     ],
     "balanced": [
         "groq/llama-3.3-70b-versatile", # free
@@ -66,16 +66,16 @@ FALLBACK_CHAINS: dict[str, list[str]] = {
     ],
     "reasoning": [
         "groq/llama-3.3-70b-versatile", # free fallback
-        "gemini/gemini-1.5-flash",       # free fallback
+        "gemini/gemini-2.0-flash",       # free fallback
         "gpt-4o-mini",                   # paid (last resort)
     ],
     "opensource": [
         "groq/llama-3.1-8b-instant",    # free
-        "gemini/gemini-1.5-flash",       # free
+        "gemini/gemini-2.0-flash",       # free
         "gpt-4o-mini",                   # paid (last resort)
     ],
     "smart": [
-        "gemini/gemini-1.5-flash",      # free fallback
+        "gemini/gemini-2.0-flash",      # free fallback
         "groq/llama-3.3-70b-versatile", # free fallback
     ],
 }
@@ -132,6 +132,10 @@ def completion_with_fallback(
 
     # Get fallback model strings for this alias
     fallbacks = _get_fallback_models(alias)
+    lb_metrics    = get_lb_metrics()
+    
+    # ── Record request start ──────────────────────────────────────────────
+    start_time = lb_metrics.record_request_start(alias, primary_model)
     
     cache_enabled = use_cache and is_cache_enabled_for_alias(alias)
     stats         = get_cache_stats()
@@ -190,14 +194,17 @@ def completion_with_fallback(
             # ← THIS is the Phase 3 key feature
             # LiteLLM automatically tries these if primary fails
             fallbacks=fallbacks,
-
             # Retry settings within each model before moving to fallback
-            num_retries=2,
-            request_timeout=25,
+            num_retries=settings.num_retries,
+            request_timeout=settings.request_timeout,
              # LiteLLM checks its cache before every API call
             caching=cache_enabled,
         )
         
+        
+        
+        model_used = response.model or primary_model
+
         # Check if LiteLLM served from its own cache
         litellm_cached = getattr(response, "_hidden_params", {}).get(
             "cache_hit", False
@@ -210,9 +217,18 @@ def completion_with_fallback(
         else:
             stats.record_miss()
 
-        model_used = response.model or primary_model
         fallback_used = model_used != primary_model
+        usage         = response.usage or {}
+        tokens        = getattr(usage, "total_tokens", 0)
         record_success(alias)
+        
+         # ── Record request end (success) ──────────────────────────────────
+        lb_metrics.record_request_end(
+            alias=alias,
+            model=model_used,
+            start_time=start_time,
+            tokens=tokens,
+        )
         
         # ── Phase 4: Extract and store cost ──────────────────────────────
         cost_record = extract_cost_from_response(

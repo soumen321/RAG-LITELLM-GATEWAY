@@ -58,6 +58,34 @@ class Settings(BaseSettings):
 
     # Disable cache for specific aliases (e.g. never cache "reasoning")
     cache_disabled_aliases: list[str] = ["reasoning"]
+    
+    # ── Phase 6: Load Balancing ───────────────────────────
+    # Strategy for routing across multiple models under same alias
+    # Options:
+    #   simple-shuffle         → random (default, no tracking)
+    #   least-busy             → fewest active concurrent requests
+    #   usage-based-routing    → tracks TPM, picks least used model
+    #   latency-based-routing  → picks model with lowest avg latency
+    #   weighted-pick          → uses weight in model_info
+    routing_strategy: Literal[
+        "simple-shuffle",
+        "least-busy",
+        "usage-based-routing",
+        "latency-based-routing",
+        "weighted-pick",
+    ] = "usage-based-routing"
+
+    # Circuit breaker: mark model unhealthy after N consecutive failures
+    allowed_fails:  int = 3
+
+    # Seconds to wait before retrying a failed model
+    cooldown_time:  int = 60
+
+    # Retry within same model before trying fallback
+    num_retries:    int = 2
+
+    # Request timeout per model (seconds)
+    request_timeout: int = 30
 
     class Config:
         env_file = ".env"

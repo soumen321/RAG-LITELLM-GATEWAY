@@ -9,6 +9,14 @@ POST /admin/cost/reset      → reset cost counters (dev only)
 GET  /admin/latency         → avg latency per model
 """
 import litellm
+# Add these imports at the top of admin.py
+from app.gateway.load_balancer import (
+    get_lb_metrics,
+    get_strategy_manager,
+    RoutingStrategy,
+)
+from app.gateway.router import get_router_stats
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, Query
 from app.models.response import (
     CostSummaryResponse,
@@ -30,6 +38,9 @@ from app.core.config import get_settings
 router   = APIRouter()
 settings = get_settings()
 
+class SwitchStrategyRequest(BaseModel):
+    strategy: RoutingStrategy
+    reason:   str = ""
 
 @router.get("/admin/cost/summary", response_model=CostSummaryResponse)
 async def cost_summary(_: str = Depends(verify_key)):
@@ -138,3 +149,102 @@ async def cache_config(_: str = Depends(verify_key)):
                                    if settings.cache_type != "local"
                                    else "n/a (local cache)",
     }    
+    
+# ── Add these new endpoints ────────────────────────────────────────────────
+
+@router.get("/admin/lb/metrics")
+async def lb_metrics(_: str = Depends(verify_key)):
+    """
+    Real-time load metrics per model.
+    Shows active requests, avg latency, error rate per model.
+    """
+    return {
+        "by_alias":         get_lb_metrics().alias_summary(),
+        "all_models":       get_lb_metrics().summary(),
+        "router_internals": get_router_stats(),
+    }
+
+
+@router.get("/admin/lb/strategy")
+async def current_strategy(_: str = Depends(verify_key)):
+    """Current routing strategy + recommendation."""
+    manager = get_strategy_manager()
+    return {
+        "current_strategy":  manager.current,
+        "recommendation":    manager.recommend_strategy(),
+        "switch_history":    manager.history(),
+        "available_strategies": [
+            {
+                "name":        "simple-shuffle",
+                "description": "Random — zero overhead, good default",
+                "best_for":    "Low traffic, dev/testing",
+            },
+            {
+                "name":        "least-busy",
+                "description": "Fewest active concurrent requests",
+                "best_for":    "High concurrency, bursty workloads",
+            },
+            {
+                "name":        "usage-based-routing",
+                "description": "Tracks token usage, routes to least-used",
+                "best_for":    "Staying under TPM limits",
+            },
+            {
+                "name":        "latency-based-routing",
+                "description": "Routes to fastest responding model",
+                "best_for":    "Latency-sensitive applications",
+            },
+            {
+                "name":        "weighted-pick",
+                "description": "Traffic split by model weight",
+                "best_for":    "A/B testing, gradual rollouts",
+            },
+        ],
+    }
+
+
+@router.post("/admin/lb/strategy/switch")
+async def switch_strategy(
+    req: SwitchStrategyRequest,
+    _:   str = Depends(verify_key),
+):
+    """
+    Switch routing strategy at runtime — no restart needed.
+
+    Example: switch to latency-based during peak hours,
+    switch back to usage-based during normal hours.
+    """
+    manager = get_strategy_manager()
+    manager.switch(req.strategy, reason=req.reason)
+    return {
+        "status":       "switched",
+        "strategy":     req.strategy,
+        "reason":       req.reason,
+    }
+
+
+@router.get("/admin/lb/circuit-breaker")
+async def circuit_breaker_status(_: str = Depends(verify_key)):
+    """Show which models are healthy vs in cooldown."""
+    metrics = get_lb_metrics().summary()
+    return {
+        "models": {
+            key: {
+                "healthy":     m["is_healthy"],
+                "error_rate":  m["error_rate"],
+                "last_error":  m["last_error"],
+            }
+            for key, m in metrics.items()
+        },
+        "config": {
+            "allowed_fails": settings.allowed_fails,
+            "cooldown_time_seconds": settings.cooldown_time,
+        },
+    }
+
+
+@router.post("/admin/lb/metrics/reset")
+async def reset_lb_metrics(_: str = Depends(verify_key)):
+    """Reset load balancer metrics counters."""
+    get_lb_metrics().reset()
+    return {"status": "reset"}    

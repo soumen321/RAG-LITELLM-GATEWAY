@@ -25,10 +25,15 @@ def get_models() -> list[dict]:
                 "model":   "huggingface/mistralai/Mistral-7B-Instruct-v0.2",
                 "api_key": settings.huggingface_api_key,
                 "api_base": "https://openrouter.ai/api/v1",
+                "tpm":     10000,
+                "rpm":     10,
+                
             },
             "model_info": {
                 "input_cost_per_token":  0.0,
                 "output_cost_per_token": 0.0,
+                "mode":   "chat",
+                "weight": 1,
             },
         },
         # fallback to a larger chat-capable HuggingFace model
@@ -38,10 +43,14 @@ def get_models() -> list[dict]:
                 "model":   "huggingface/mistralai/Mistral-7B-Instruct-v0.3",
                 "api_key": settings.huggingface_api_key,
                 "api_base": "https://openrouter.ai/api/v1",
+                "tpm":     10000,
+                "rpm":     10,
             },
             "model_info": {
                 "input_cost_per_token":  0.0,
                 "output_cost_per_token": 0.0,
+                "mode":   "chat",
+                "weight": 1,
             },
         },
     ]

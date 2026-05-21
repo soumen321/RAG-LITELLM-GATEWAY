@@ -91,19 +91,39 @@ def build_router() -> Router:
         # ── Phase 3 additions ─────────────────────────────────────────────
         fallbacks=fallbacks,
         context_window_fallbacks=context_window_fallbacks,
+        
+        # ── Phase 6: Load balancing strategy ─────────────────────────────
+        # LiteLLM uses this strategy when multiple models share same alias.
+        # Options: simple-shuffle | least-busy | usage-based-routing
+        #          latency-based-routing | weighted-pick
+        routing_strategy=settings.routing_strategy,
+        
+        # ── Phase 6: Circuit breaker ──────────────────────────────────────
+        # allowed_fails: how many times a model can fail before it's
+        #   marked unhealthy and skipped by the router
+        allowed_fails=settings.allowed_fails,
 
-        # How many times a model can fail before Router marks it unhealthy
-        allowed_fails=2,
+        # cooldown_time: seconds before a failed model is retried
+        cooldown_time=settings.cooldown_time,
 
-        # How long (seconds) to wait before retrying a failed model
-        cooldown_time=30,
+        # ── Retry + timeout ───────────────────────────────────────────────
+        num_retries=settings.num_retries,
+        timeout=settings.request_timeout,
 
-        # Retry within same model before trying fallback
-        num_retries=2,
-        timeout=25,
-
-        routing_strategy="simple-shuffle",
         set_verbose=settings.debug,
+
+        # # How many times a model can fail before Router marks it unhealthy
+        # allowed_fails=2,
+
+        # # How long (seconds) to wait before retrying a failed model
+        # cooldown_time=30,
+
+        # # Retry within same model before trying fallback
+        # num_retries=2,
+        # timeout=25,
+
+        # routing_strategy="simple-shuffle",
+        # set_verbose=settings.debug,
     )
     
     # ── Phase 4: Register LiteLLM callbacks ──────────────────────────
@@ -130,3 +150,34 @@ def get_router() -> Router:
 def get_available_aliases() -> list[str]:
     router = get_router()
     return sorted({m["model_name"] for m in router.model_list})
+
+def get_router_stats() -> dict:
+    """
+    Pull load stats directly from the LiteLLM Router.
+    These are the internal counters LiteLLM uses for routing decisions.
+    """
+    router = get_router()
+
+    # LiteLLM stores deployment stats internally
+    deployment_stats = {}
+    try:
+        if hasattr(router, "model_list"):
+            for model in router.model_list:
+                name   = model["litellm_params"]["model"]
+                alias  = model["model_name"]
+                # Access router's internal latency tracker
+                latency = None
+                if hasattr(router, "deployment_latency_map"):
+                    latency = router.deployment_latency_map.get(name)
+                deployment_stats[f"{alias}::{name}"] = {
+                    "alias":         alias,
+                    "model":         name,
+                    "avg_latency_ms": latency,
+                    "tpm_limit":     model["litellm_params"].get("tpm"),
+                    "rpm_limit":     model["litellm_params"].get("rpm"),
+                    "weight":        model["model_info"].get("weight", 1),
+                }
+    except Exception as e:
+        logger.warning("router_stats_error", error=str(e))
+
+    return deployment_stats
