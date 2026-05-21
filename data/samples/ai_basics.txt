@@ -1,0 +1,10 @@
+Artificial Intelligence (AI) is the simulation of human intelligence in machines.
+Machine Learning (ML) is a subset of AI that enables systems to learn from data.
+Deep Learning uses neural networks with many layers to learn complex patterns.
+Large Language Models (LLMs) like GPT-4 are trained on vast amounts of text data.
+Retrieval-Augmented Generation (RAG) combines a retrieval system with a language model.
+In RAG, relevant documents are fetched from a vector database before generating an answer.
+ChromaDB is an open-source vector database that stores and retrieves embeddings locally.
+Embeddings are numerical representations of text that capture semantic meaning.
+The BAAI/bge-small-en-v1.5 model generates high quality embeddings for free locally.
+OpenAI's gpt-4o-mini is a cost-effective model for generating high quality answers.
