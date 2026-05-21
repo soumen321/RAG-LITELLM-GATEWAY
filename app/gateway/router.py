@@ -15,6 +15,7 @@ from app.gateway.providers.groq import get_models as groq_models
 from app.gateway.providers.gemini import get_models as gemini_models
 from app.gateway.providers.huggingface import get_models as hf_models
 from app.gateway.callbacks import register_callbacks
+from app.gateway.cache import init_litellm_cache
 
 settings = get_settings()
 logger   = get_logger(__name__)
@@ -107,6 +108,9 @@ def build_router() -> Router:
     
     # ── Phase 4: Register LiteLLM callbacks ──────────────────────────
     register_callbacks()
+    
+    # ── Phase 5: Initialise LiteLLM cache ────────────────────────────────
+    init_litellm_cache()
 
     logger.info("gateway_router_ready",
                 fallbacks_count=len(fallbacks))

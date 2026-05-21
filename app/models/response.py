@@ -23,6 +23,7 @@ class QueryResponse(BaseModel):
     alias:     str          # ← NEW: "fast" | "balanced" | "smart" etc.
     fallback_used:  bool          # ← NEW: was a fallback triggered?
     fallback_model: str | None    # ← NEW: which model was used if fallback
+    cached:         bool
     usage: dict
     elapsed_s: float
 
@@ -77,3 +78,15 @@ class CostEstimateResponse(BaseModel):
     estimated_input_cost_usd: float
     output_cost_per_token:   float
     note:                    str    
+    
+# ── NEW Phase 5 ─────────────────────────────────────────────────────────
+
+class CacheStatsResponse(BaseModel):
+    cache_type:      str
+    hits:            int
+    misses:          int
+    semantic_hits:   int
+    hit_rate_pct:    float
+    saved_cost_usd:  float
+    saved_tokens:    int
+    semantic_entries: int    

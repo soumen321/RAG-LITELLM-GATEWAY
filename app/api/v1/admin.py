@@ -8,17 +8,23 @@ POST /admin/cost/estimate   → estimate cost before calling
 POST /admin/cost/reset      → reset cost counters (dev only)
 GET  /admin/latency         → avg latency per model
 """
+import litellm
 from fastapi import APIRouter, Depends, Query
 from app.models.response import (
     CostSummaryResponse,
     BudgetStatusResponse,
     CostEstimateResponse,
+    CacheStatsResponse
 )
 from app.models.request import QueryRequest
 from app.api.deps import verify_key
 from app.gateway.cost_tracker import get_store, estimate_cost_before_call
 from app.gateway.budget_manager import get_budget_summary
 from app.gateway.callbacks import latency_tracker
+from app.gateway.cache import (
+    get_cache_stats,
+    get_semantic_cache,
+)
 from app.core.config import get_settings
 
 router   = APIRouter()
@@ -81,3 +87,54 @@ async def latency_report(_: str = Depends(verify_key)):
         "avg_latency_ms_by_model": latency_tracker.get_all(),
         "note": "Average over last 20 requests per model",
     }
+    
+# ── NEW Phase 5: Cache endpoints ──────────────────────────────────────────
+
+@router.get("/admin/cache/stats", response_model=CacheStatsResponse)
+async def cache_stats(_: str = Depends(verify_key)):
+    """Cache hit/miss stats + cost savings from caching."""
+    stats = get_cache_stats()
+    sem   = get_semantic_cache()
+    return CacheStatsResponse(
+        cache_type=settings.cache_type,
+        **stats.summary(),
+        semantic_entries=sem.size(),
+    )
+
+
+@router.post("/admin/cache/flush")
+async def flush_cache(_: str = Depends(verify_key)):
+    """
+    Flush all cached responses.
+    Useful after updating documents or for testing.
+    """
+    # Flush LiteLLM's own cache
+    if litellm.cache:
+        try:
+            litellm.cache.flush_cache()
+        except Exception:
+            pass
+
+    # Flush semantic cache
+    sem_count = get_semantic_cache().flush()
+
+    return {
+        "status":           "flushed",
+        "semantic_entries_removed": sem_count,
+        "litellm_cache_type": settings.cache_type,
+    }
+
+
+@router.get("/admin/cache/config")
+async def cache_config(_: str = Depends(verify_key)):
+    """Show current cache configuration."""
+    return {
+        "cache_type":              settings.cache_type,
+        "cache_ttl_seconds":       settings.cache_ttl,
+        "semantic_threshold":      settings.semantic_similarity_threshold,
+        "disabled_for_aliases":    settings.cache_disabled_aliases,
+        "semantic_cache_entries":  get_semantic_cache().size(),
+        "redis_host":              settings.redis_host
+                                   if settings.cache_type != "local"
+                                   else "n/a (local cache)",
+    }    

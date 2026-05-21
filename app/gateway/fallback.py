@@ -24,12 +24,21 @@ from litellm.exceptions import (
     BadRequestError,
     ContextWindowExceededError,
 )
+
+from app.gateway.cache import (
+    get_semantic_cache,
+    get_cache_stats,
+    is_cache_enabled_for_alias,
+    make_cache_key,
+)
+
 from app.core.config import get_settings
 from app.core.logger import get_logger
 from app.core.exceptions import AllProvidersFailedError,GenerationError
 from app.gateway.budget_manager import check_budget_before_call
 from app.gateway.health import record_failure, record_success, is_healthy
 from app.gateway.cost_tracker import extract_cost_from_response
+from app.gateway.router import get_router
 
 logger   = get_logger(__name__)
 settings = get_settings()
@@ -93,7 +102,12 @@ def completion_with_fallback(
     max_tokens: int | None = None,
     temperature: float | None = None,
     question: str = "",               # ← ADD this param
-) -> tuple[object, str, dict]:
+    use_cache:   bool         = True,  
+) -> tuple[object, str, dict, bool]:
+   
+   
+   
+   
     """
     Call litellm.completion() with the fallbacks parameter.
 
@@ -109,7 +123,7 @@ def completion_with_fallback(
     Returns:
         (response, model_actually_used)
     """
-    from app.gateway.router import get_router
+    
 
     router = get_router()
 
@@ -119,6 +133,33 @@ def completion_with_fallback(
     # Get fallback model strings for this alias
     fallbacks = _get_fallback_models(alias)
     
+    cache_enabled = use_cache and is_cache_enabled_for_alias(alias)
+    stats         = get_cache_stats()
+    
+    # ── Layer 1: Semantic cache lookup ────────────────────────────────────
+    if cache_enabled and question:
+        sem_cache = get_semantic_cache()
+        cached = sem_cache.get(query=question, alias=alias)
+        if cached:
+            logger.info("semantic_cache_response_returned",
+                        alias=alias, question=question[:60])
+            # Return a mock cost record with zero cost
+            from app.gateway.cost_tracker import CostRecord
+            import time
+            zero_cost = CostRecord(
+                request_id="cached",
+                alias=alias,
+                model=cached.get("model", alias),
+                provider=cached.get("provider", "cache"),
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                cost_usd=0.0,
+                fallback_used=False,
+            )
+            return cached["_raw_response"], cached["model"], zero_cost, True
+    
+    # ── Budget check ──────────────────────────────────────────────────────
      # ── Phase 4: Check budget before calling ─────────────────────────────
     budget_status = check_budget_before_call(alias)
     if not budget_status["within_budget"]:
@@ -153,7 +194,21 @@ def completion_with_fallback(
             # Retry settings within each model before moving to fallback
             num_retries=2,
             request_timeout=25,
+             # LiteLLM checks its cache before every API call
+            caching=cache_enabled,
         )
+        
+        # Check if LiteLLM served from its own cache
+        litellm_cached = getattr(response, "_hidden_params", {}).get(
+            "cache_hit", False
+        )
+
+        if litellm_cached:
+            stats.record_hit()
+            logger.info("litellm_exact_cache_hit", alias=alias,
+                        model=model_used)
+        else:
+            stats.record_miss()
 
         model_used = response.model or primary_model
         fallback_used = model_used != primary_model
@@ -166,6 +221,21 @@ def completion_with_fallback(
             fallback_used=fallback_used,
             question=question,
         )
+        
+         # ── Layer 2: Store in semantic cache for future similar queries ───
+        if cache_enabled and question and not litellm_cached:
+            sem_cache = get_semantic_cache()
+            sem_cache.set(
+                query=question,
+                alias=alias,
+                response={
+                    "model":         model_used,
+                    "provider":      model_used.split("/")[0]
+                                     if "/" in model_used else "openai",
+                    "_raw_response": response,
+                },
+                ttl=settings.cache_ttl,
+            )
 
         logger.info(
             "completion_success",
@@ -175,7 +245,7 @@ def completion_with_fallback(
             cost_usd=cost_record.cost_usd,
         )
 
-        return response, model_used, cost_record
+        return response, model_used, cost_record, litellm_cached
 
     except NO_FALLBACK_EXCEPTIONS as e:
         # Don't retry — these are caller errors (bad key, bad request)

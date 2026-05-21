@@ -40,7 +40,14 @@ def generate_answer(
     query: str,
     retrieved_docs: list[dict],
     model_alias: str | None = None,
+    use_cache:      bool       = True,
 ) -> dict:
+    """
+    Generate answer — Phase 5: cache-aware.
+
+    Cache hit  → returns instantly, cost_usd=0.0, cached=True
+    Cache miss → calls LLM, stores result, returns response
+    """
     """
     Generate answer — now with automatic fallback.
 
@@ -58,6 +65,7 @@ def generate_answer(
             "fallback_used": False,
             "fallback_model": None,
             "cost_usd":      0.0,
+            "cached":        False,
             "usage":         {},
         }
 
@@ -93,12 +101,14 @@ def generate_answer(
     # LiteLLM handles all retries and fallbacks internally.
     # ─────────────────────────────────────────────────────────────────────
     try:
-        response, model_used, cost_record = completion_with_fallback(
+        # Returns (response, model_used, cost_record, was_cached)
+        response, model_used, cost_record, was_cached = completion_with_fallback(
             alias=alias,
             messages=messages,
             max_tokens=settings.max_tokens,
             temperature=settings.temperature,
             question=query,
+            use_cache=use_cache,
         )
     except AllProvidersFailedError:
         raise   # let FastAPI handle this as 503
@@ -140,6 +150,7 @@ def generate_answer(
         "fallback_used":  fallback_used,
         "fallback_model": model_used if fallback_used else None,
         "cost_usd":       cost_record.cost_usd,     # ← NEW Phase 4
+        "cached":         was_cached,           # ← NEW Phase 5: indicates if response was from cache
         "usage": {
             "prompt_tokens":     cost_record.prompt_tokens,
             "completion_tokens": cost_record.completion_tokens,

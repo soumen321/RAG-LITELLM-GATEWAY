@@ -39,6 +39,7 @@ class QueryRequest(BaseModel):
             "opensource=HuggingFace(free)"
         ),
     )
+    use_cache:    bool = True          # ← NEW Phase 5
     metadata_filter: dict | None = None
 
     # @field_validator("metadata_filter")

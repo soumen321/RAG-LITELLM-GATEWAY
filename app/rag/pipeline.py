@@ -81,6 +81,7 @@ class RAGPipeline:
         top_k: int | None = None,
         metadata_filter: dict | None = None,
         model_alias: str | None = None,
+        use_cache: bool = True,
     ) -> dict:
         t0 = time.time()
 
@@ -99,7 +100,12 @@ class RAGPipeline:
         # 3. Generate answer with OpenAI
         #result = generate_answer(question, retrieved)
           # Generate — now passes model_alias to LiteLLM router
-        result = generate_answer(question, retrieved, model_alias=model_alias)
+        result = generate_answer(
+            question,
+            retrieved,
+            model_alias=model_alias,
+            use_cache=use_cache,
+        )
 
         elapsed = round(time.time() - t0, 2)
         logger.info("rag_query_complete",
@@ -116,6 +122,8 @@ class RAGPipeline:
             "alias":         result["alias"],      # ← NEW
             "fallback_used": result.get("fallback_used", False),
             "fallback_model": result.get("fallback_model"),
+            "cached":         result.get("cached", False),
+            "cost_usd":       result.get("cost_usd", 0.0),
             "usage":         result["usage"],
             "elapsed_s":     elapsed,
         }

@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-
+from typing import Literal
 
 class Settings(BaseSettings):
     # App
@@ -38,6 +38,26 @@ class Settings(BaseSettings):
     default_model_alias: str = "fast"
     max_tokens: int = 1024
     temperature: float = 0.2
+    
+     # ── Phase 5: Cache settings ───────────────────────────
+    # Cache type: "local" (no Redis) or "redis" or "redis-semantic"
+    cache_type: Literal["local", "redis", "redis-semantic"] = "local"
+
+    # Redis connection (only needed for cache_type=redis/redis-semantic)
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: str = ""
+
+    # How long to keep cached responses (seconds)
+    cache_ttl: int = 3600         # 1 hour
+
+    # Similarity threshold for semantic cache (0.0–1.0)
+    # 0.95 = responses reused only for very similar questions
+    # 0.85 = more aggressive reuse
+    semantic_similarity_threshold: float = 0.90
+
+    # Disable cache for specific aliases (e.g. never cache "reasoning")
+    cache_disabled_aliases: list[str] = ["reasoning"]
 
     class Config:
         env_file = ".env"
