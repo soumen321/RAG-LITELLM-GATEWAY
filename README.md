@@ -3,7 +3,10 @@
 > A production-grade Retrieval-Augmented Generation (RAG) system built phase-by-phase,
 > featuring LiteLLM as the unified AI gateway across OpenAI, Groq, Gemini, and HuggingFace.
 
----
+<img width="1086" height="1250" alt="poc" src="https://github.com/user-attachments/assets/6d638f45-e558-4630-9dcd-00d96eaff419" />
+
+
+
 
 ## 📌 Project Overview
 
